@@ -48,4 +48,12 @@ int main(){
         }
     }
 
+
+    //Test 5 (test mixed-type call for template)
+    std::cout<<"--- Test 5: Mixed-type call ---\n";
+    {
+        Logger logger{"warn.log", LogLevel::WARN};
+        int orderId = 8812;
+        logger.log(LogLevel::WARN, "order ", orderId, " rejected, price=", 192.40);
+    }
 }

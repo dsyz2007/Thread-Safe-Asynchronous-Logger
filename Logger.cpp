@@ -35,7 +35,8 @@ Logger::~Logger(){
 }
 
 
-void Logger::log(LogLevel level, std::string_view message){
+
+void Logger::writeLine(LogLevel level, std::string_view message){
 
     if(level < minLevel_) return;
 
