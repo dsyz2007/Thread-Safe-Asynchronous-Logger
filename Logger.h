@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <sstream>
+#include <mutex>
 
 
 enum class LogLevel {DEBUG, INFO, WARN, ERROR};
@@ -15,6 +16,7 @@ class Logger {
         std::ofstream file_;
         std::string filename_;
         LogLevel minLevel_;
+        std::mutex mutex_;
         void writeLine(LogLevel level, std::string_view message);
 
     public:

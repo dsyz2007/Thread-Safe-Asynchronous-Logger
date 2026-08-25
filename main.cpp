@@ -1,5 +1,9 @@
 #include "Logger.h"
 #include <iostream>
+#include <thread>
+#include <vector>
+#include <chrono>
+
 
 
 int main(){
@@ -55,5 +59,39 @@ int main(){
         Logger logger{"warn.log", LogLevel::WARN};
         int orderId = 8812;
         logger.log(LogLevel::WARN, "order ", orderId, " rejected, price=", 192.40);
+    }
+
+
+    //Test 6 (launch several threads and cause data race)
+    {
+        Logger logger{"race.log", LogLevel::DEBUG};
+        std::vector<std::thread> threads;
+
+        for(int t = 0; t < 8; ++t){
+            threads.emplace_back(
+                [&logger, t]{ //lambda (anonymous inline function)
+                    for(int i = 0;i < 2000;i++){
+                        logger.log(LogLevel::INFO, "thread ", t, " iteration ", i, " padding-padding-padding");
+                    }
+                });
+        }
+
+        for(auto& th : threads) th.join();
+    }
+
+
+    //Time 10000 single-threaded log() calls [Stage 3 Results: 35884 us total for 10000 calls, 3.5884us/call]
+    {
+        Logger logger{"time.log"};
+
+        const auto start = std::chrono::steady_clock::now();
+        
+        for(int i = 0; i < 10000; ++i) logger.log(LogLevel::INFO, "benchmark", i);
+
+        const auto end = std::chrono::steady_clock::now();
+
+        const auto us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+
+        std::cout<< us << " us total, " << (double)us / 10000 <<"us/call\n";
     }
 }

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <mutex>
 
 
 
@@ -39,6 +40,8 @@ Logger::~Logger(){
 void Logger::writeLine(LogLevel level, std::string_view message){
 
     if(level < minLevel_) return;
+
+    std::lock_guard<std::mutex> lock{mutex_};
 
     //current time (obtain from wall clock)
     const auto now = std::chrono::system_clock::now();
