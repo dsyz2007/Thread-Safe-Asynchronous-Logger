@@ -5,10 +5,30 @@
 #include <string_view>
 #include <sstream>
 #include <mutex>
+#include <queue>
+#include <thread>
+#include <condition_variable>
+#include <chrono>
+
+
+
+
+
 
 
 enum class LogLevel {DEBUG, INFO, WARN, ERROR};
                     // 0 ,   1  ,  2  ,   3
+
+
+
+
+struct LogMessage {
+    LogLevel level;
+    std::chrono::system_clock::time_point timestamp;
+    std::string text;
+};
+
+
 
 
 class Logger {
@@ -17,7 +37,13 @@ class Logger {
         std::string filename_;
         LogLevel minLevel_;
         std::mutex mutex_;
-        void writeLine(LogLevel level, std::string_view message);
+        std::condition_variable cv_;
+        std::queue<LogMessage> queue_;
+        bool stop_ = false;
+        std::thread worker_; 
+        void writeLine(const LogMessage& msg);
+        void enqueue(LogLevel level, std::string text);
+        void consumerLoop();
 
     public:
         //constructor (make it explicit to avoid auto type conversions which can cause hard to debug bugs)
@@ -39,6 +65,6 @@ class Logger {
 
             //format: (init operation ... operation pack)   [Note: () encasing is compulsory as per C++ syntax]
             (void)(oss << ... << args); // (void) is to handle the edge case: no arguments (empty)
-            writeLine(level, oss.str());
+            enqueue(level, oss.str()); //defined in Logger.cpp, private, non-template
         }
 };

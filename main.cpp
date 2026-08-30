@@ -80,7 +80,7 @@ int main(){
     }
 
 
-    //Time 10000 single-threaded log() calls [Stage 3 Results: 35884 us total for 10000 calls, 3.5884us/call]
+    //Time 10000 single-threaded log() calls
     {
         Logger logger{"time.log"};
 
