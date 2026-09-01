@@ -7,6 +7,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <utility>
+#include <filesystem>
 
 
 
@@ -23,8 +24,8 @@ namespace { //a namespace with no name: Everything inside is visible only in thi
 }
 
 
-Logger::Logger(const std::string& filename, LogLevel minLevel) 
-    : file_{filename, std::ios::app}, filename_{filename}, minLevel_{minLevel}
+Logger::Logger(const std::string& filename, LogLevel minLevel, std::size_t maxBytes) 
+    : file_{filename, std::ios::app}, filename_{filename}, minLevel_{minLevel}, maxBytes_{maxBytes}
 { //constructor
     if(!file_){
         throw std::runtime_error("Logger failed to open " + filename + "!");
@@ -47,6 +48,33 @@ Logger::~Logger(){
 }
 
 
+void Logger::rotateIfNeeded(){
+
+    //check if file is full anot, if not full return and don't need rotate file
+    if(file_.tellp() <= static_cast<std::streampos>(maxBytes_)) return;
+
+    std::cerr<<"Bytes already written in old file: "<<file_.tellp()<<'\n';
+    
+    file_.close(); //close file before renaming, renaming an open file doesn't work in Windows so just close first to be safe
+
+    std::string archive_name = filename_ + "." + std::to_string(++rotationCount_);
+
+    //rename the file to its archived name
+    std::filesystem::rename(filename_, archive_name);
+    std::cout<<"Archived file name: "<<archive_name<<'\n';
+    
+    //set file_ to a new file
+    file_.open(filename_, std::ios::app); //append mode
+
+    if(!file_){ //if this triggers, output the diagnostics
+        std::cerr<<"Logger failed to reopen: "<<filename_<<" after rotation.\n";
+    }
+
+    //check that new file is opened (expect output = 0)
+    std::cout<<"Bytes written in new file: "<<file_.tellp()<<'\n';
+
+}
+
 
 void Logger::writeLine(const LogMessage& msg){
 
@@ -64,6 +92,9 @@ void Logger::writeLine(const LogMessage& msg){
     // put_time is a stream manipulator: it doesn't return a string, it prints when streamed.
     file_ << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
     file_ << " ["<<levelToString(msg.level)<<"] "<<msg.text<<'\n';
+
+    //check if need to switch to new file if current file is too big
+    rotateIfNeeded();
 
 }
 

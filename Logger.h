@@ -41,13 +41,16 @@ class Logger {
         std::queue<LogMessage> queue_;
         bool stop_ = false;
         std::thread worker_; 
+        std::size_t maxBytes_; //threshold to switch to new file if existing file too full
+        int rotationCount_ = 0; //used for naming the archived file
         void writeLine(const LogMessage& msg);
         void enqueue(LogLevel level, std::string text);
         void consumerLoop();
+        void rotateIfNeeded();
 
     public:
         //constructor (make it explicit to avoid auto type conversions which can cause hard to debug bugs)
-        explicit Logger(const std::string& filename, LogLevel minLevel = LogLevel::INFO);
+        explicit Logger(const std::string& filename, LogLevel minLevel = LogLevel::INFO, std::size_t maxBytes = 1024 * 1024);
 
 
         //destructor

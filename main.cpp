@@ -94,4 +94,15 @@ int main(){
 
         std::cout<< us << " us total, " << (double)us / 10000 <<"us/call\n";
     }
+
+
+    //Test 7 (test that the file rotation works)
+    std::cout<<"--- Test 7: Rotation ---\n";
+    {
+        Logger logger{"rotate.log", LogLevel::INFO, 2048};
+        for(int i = 0;i < 400;++i){
+            logger.log(LogLevel::INFO, "message number", i);
+        }
+    }
+
 }
