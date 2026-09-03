@@ -33,7 +33,7 @@ Logger::Logger(const std::string& filename, LogLevel minLevel, std::size_t maxBy
 
     worker_ = std::thread{&Logger::consumerLoop, this}; //this line must be after the throw, not before, cos if constructor threw with a running joinable thread, the cleanup will destroy the thread and call std::terminate to the program
 
-    std::cout<<"Successful logger creation: "<<filename<<" "<<levelToString(minLevel_)<<'\n';
+    std::cerr<<"Successful logger creation: "<<filename<<" "<<levelToString(minLevel_)<<'\n';
 }
 
 
@@ -44,7 +44,7 @@ Logger::~Logger(){
     } //lock released at "}" here
     cv_.notify_one(); //wakes up the sleeping worker thread to write into log file
     worker_.join(); //makes sure that worker_ is not destroyed until consumerLoop() returns (finish logging all lines) cos worker_ is still needed to finish the remaining logs left in queue_ even after Logger object is destroyed
-    std::cout<<"Logger destroyed successfully: "<<filename_<<'\n';
+    std::cerr<<"Logger destroyed successfully: "<<filename_<<'\n';
 }
 
 
@@ -61,7 +61,7 @@ void Logger::rotateIfNeeded(){
 
     //rename the file to its archived name
     std::filesystem::rename(filename_, archive_name);
-    std::cout<<"Archived file name: "<<archive_name<<'\n';
+    std::cerr<<"Archived file name: "<<archive_name<<'\n';
     
     //set file_ to a new file
     file_.open(filename_, std::ios::app); //append mode
@@ -71,7 +71,7 @@ void Logger::rotateIfNeeded(){
     }
 
     //check that new file is opened (expect output = 0)
-    std::cout<<"Bytes written in new file: "<<file_.tellp()<<'\n';
+    std::cerr<<"Bytes written in new file: "<<file_.tellp()<<'\n';
 
 }
 
@@ -111,14 +111,14 @@ void Logger::enqueue(LogLevel level, std::string text){
 
 
 void Logger::consumerLoop(){
-    std::cout<<"Worker thread started\n";
+    std::cerr<<"Worker thread started\n";
 
     for(;;){
         std::unique_lock<std::mutex> uLock{mutex_};
         cv_.wait(uLock, [this]{return !queue_.empty() || stop_;});
 
         if(queue_.empty() && stop_){ //need check queue_.empty() on top of stop_=true cos need to prevent the edge case of queued messages being silently forgone when logging is stopped
-            std::cout<<"Worker thread stopping\n";
+            std::cerr<<"Worker thread stopping\n";
             return;
         }
 

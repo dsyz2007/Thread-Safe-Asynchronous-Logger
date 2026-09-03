@@ -1,3 +1,11 @@
 SPEC.md
 .env
-rotate.log.*
+bench
+
+# compiled binary files
+*.exe
+*.dll
+*.so
+*.dylib
+*.bin
+*.out

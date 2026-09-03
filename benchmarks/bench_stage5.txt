@@ -1,0 +1,5 @@
+Throughput: 993875 msgs/sec
+p50:   1353 ns
+p99:   108291 ns
+p99.9:   797130 ns
+max (p100):   11743311 ns
