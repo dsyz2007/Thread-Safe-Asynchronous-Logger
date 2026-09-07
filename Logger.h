@@ -5,11 +5,10 @@
 #include <string_view>
 #include <sstream>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <condition_variable>
 #include <chrono>
-
+#include <atomic>
 
 
 
@@ -21,11 +20,17 @@ enum class LogLevel {DEBUG, INFO, WARN, ERROR};
 
 
 
-
 struct LogMessage {
     LogLevel level;
     std::chrono::system_clock::time_point timestamp;
     std::string text;
+};
+
+
+
+struct Node {
+    LogMessage msg;
+    Node* next;
 };
 
 
@@ -38,11 +43,12 @@ class Logger {
         LogLevel minLevel_;
         std::mutex mutex_;
         std::condition_variable cv_;
-        std::queue<LogMessage> queue_;
-        bool stop_ = false;
         std::thread worker_; 
         std::size_t maxBytes_; //threshold to switch to new file if existing file too full
         int rotationCount_ = 0; //used for naming the archived file
+        std::atomic<Node*> head_{nullptr};
+        std::atomic<bool> stop_{false};
+        std::atomic<bool> sleeping_{false};
         void writeLine(const LogMessage& msg);
         void enqueue(LogLevel level, std::string text);
         void consumerLoop();

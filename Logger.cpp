@@ -8,6 +8,8 @@
 #include <condition_variable>
 #include <utility>
 #include <filesystem>
+#include <thread>
+
 
 
 
@@ -38,11 +40,11 @@ Logger::Logger(const std::string& filename, LogLevel minLevel, std::size_t maxBy
 
 
 Logger::~Logger(){
-    {  // {   ...   } is a scope
+    {
         std::lock_guard<std::mutex> lock{mutex_};
-        stop_ = true; //the stop_ variable is shared by multiple threads and mutated by at least one of them so need mutex and lock
-    } //lock released at "}" here
-    cv_.notify_one(); //wakes up the sleeping worker thread to write into log file
+        stop_.store(true, std::memory_order_release);
+    }
+    cv_.notify_one();
     worker_.join(); //makes sure that worker_ is not destroyed until consumerLoop() returns (finish logging all lines) cos worker_ is still needed to finish the remaining logs left in queue_ even after Logger object is destroyed
     std::cerr<<"Logger destroyed successfully: "<<filename_<<'\n';
 }
@@ -101,11 +103,24 @@ void Logger::writeLine(const LogMessage& msg){
 
 
 void Logger::enqueue(LogLevel level, std::string text){
-    {
+    Node* n = new Node{LogMessage{level, std::chrono::system_clock::now(), std::move(text)}, nullptr};
+
+    n->next = head_.load(std::memory_order_relaxed); // std::memory_order_relaxed: "Just make this single variable atomic. I don't care about anything else: give CPU full freedom to reorder any other surrounding instructions for CPU optimisation."
+
+    //Compare-and-Swap (CAS) single atomic Loop 
+    //[Set this variable to X, but only if it still holds the value I last saw. If someone changed it, tell me what it holds now and don't write]
+    //head_.compare_exchange_weak(expected, desired, whattodoif_success, whattodoif_failure)
+    while(!head_.compare_exchange_weak(n->next, n, std::memory_order_release, std::memory_order_relaxed)){}
+    //in above line, "expected" (n->next) is passed by reference, so if fail the function writes current value back to variable, don't need re-read anything, the failed attempt will hand u fresh data automatically.
+    //Sudocode: if head_ == expected, set head_ = desired and return true. Else, set expected = head_ and return false.
+
+    // std::memory_order_release: "Gurantee data is updated completely and pack it completely into box and seal the box shut (prevent further updates) and deliver straight to recipients."
+
+    //after lock-free push, producer wakes up consumer if consumer is sleeping
+    if(sleeping_.load(std::memory_order_acquire)){
         std::lock_guard<std::mutex> lock{mutex_};
-        queue_.push(LogMessage{level, std::chrono::system_clock::now(), std::move(text)});
+        cv_.notify_one();
     }
-    cv_.notify_one();
 }
 
 
@@ -114,20 +129,46 @@ void Logger::consumerLoop(){
     std::cerr<<"Worker thread started\n";
 
     for(;;){
-        std::unique_lock<std::mutex> uLock{mutex_};
-        cv_.wait(uLock, [this]{return !queue_.empty() || stop_;});
+        
+        // detaches head_'s data from head_ in one CPU instruction, head_ become nullptr, give exclusive ownership of data to "list"
+        Node* list = head_.exchange(nullptr, std::memory_order_acquire); //claim everything in one atomic operation
+        // std::memory_order_acquire: "Open the box sealed by 'std::memory_order_release' and look inside box."
+        // "release" and "acquire" always form a handshake synchronisation pair
 
-        if(queue_.empty() && stop_){ //need check queue_.empty() on top of stop_=true cos need to prevent the edge case of queued messages being silently forgone when logging is stopped
-            std::cerr<<"Worker thread stopping\n";
-            return;
+        if(!list){
+            if(stop_.load(std::memory_order_acquire)){ //.load() on an atomic type variable is an atomic read operation
+                list = head_.exchange(nullptr, std::memory_order_acquire); //IMPORTANT: final sweep is compulsory cos there might be last minute changes made by other threads just right before this line
+                if(!list) break;
+            }else{
+
+                //when lock-free queue is empty, sleep the consumer thread
+                std::unique_lock<std::mutex> lock{mutex_};
+                sleeping_.store(true, std::memory_order_release);
+                cv_.wait(lock, [this]{return head_.load(std::memory_order_acquire) != nullptr || stop_.load(std::memory_order_acquire); });
+                sleeping_.store(false, std::memory_order_release);
+
+                continue;
+            }
         }
 
-        LogMessage msg = std::move(queue_.front()); // .front() returns a reference to the element still inside queue
-        queue_.pop(); 
+        //the current queue is LIFO so we need to reverse it to make it FIFO
+        Node* fifo = nullptr;
+        while(list){ //continue while current "list" node is non-nullptr
+            Node* nextnode = list->next; //step 1: save where we're going next
+            list->next = fifo; //step 2: next-ptr of cur "list" node points to cur front node of "fifo" (reversed version of "list")
+            fifo = list; //step 3: ex-last node is now the front of reversed list
+            list = nextnode; //step 4: advance to address saved in step 1
+        }
 
-        uLock.unlock(); //unique_lock allows manual release (lock_guard doesn't) so disk write can occur with no lock held, no need wait for I/O
-
-        writeLine(msg);
+        //write and free
+        while(fifo){ //continue while cur fifo node is non-nullptr
+            writeLine(fifo->msg);
+            Node* nextnode = fifo->next; //save BEFORE delete
+            delete fifo;
+            fifo = nextnode;
+        }
     }
 
 }
+
+
